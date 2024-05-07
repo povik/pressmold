@@ -1,0 +1,10 @@
+bool register_cell_cmd(sta::LibertyCell *cell, bool verbose);
+void prepare_cuts_cmd(int npriority_cuts, int nmatches_max);
+void read_aiger_cmd(const char *filename, const char *name);
+void portlist_cmd();
+void write_aig_verilog(const char *filename, const char *module_name);
+void report_mapping();
+void extract_mapping();
+void mapping_round_cmd(const char *kind, float param);
+void report_aig();
+void lose_choices();
