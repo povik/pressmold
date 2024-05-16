@@ -5,6 +5,6 @@ void portlist_cmd();
 void write_aig_verilog(const char *filename, const char *module_name);
 void report_mapping();
 void extract_mapping();
-void mapping_round_cmd(const char *kind, float param);
+void mapping_round_cmd(const char *kind, float param, bool param2);
 void report_aig();
 void lose_choices();

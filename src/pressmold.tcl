@@ -106,6 +106,8 @@ proc refine_mapping {args} {
 			set round depth
 		} elseif {$crumb == "d"} {
 			set round depth2
+		} elseif {$crumb == "X"} {
+			set round fuzzy
 		} elseif {$crumb == "S"} {
 			set round save
 		} elseif {$crumb == "s"} {
@@ -114,7 +116,9 @@ proc refine_mapping {args} {
 			error "Symbol $crumb passed in the -seq argument not recognized"
 		}
 
+		set prev_round ""
 		for {set j 0} {$j < $rep} {incr j} {
+			set param2 false
 			if {$round == "anneal"} {
 				if {$rep == 1} {
 					set param $keys(-temp)
@@ -124,10 +128,20 @@ proc refine_mapping {args} {
 			} elseif {$round == "flow"} {
 				set param $refs_blend
 				set refs_blend [expr $refs_blend / 2.0]
+			} elseif {$round == "fuzzy"} {
+				if {$rep == 1} {
+					set param $keys(-temp)
+				} else {
+					set param [expr (1.0 - ($j / ($rep - 0.0))) * $keys(-temp)]
+				}
+				if {$prev_round != "fuzzy"} {
+					set param2 true
+				}
 			} else {
 				set param [expr $i == 0]
 			}
-			sta::mapping_round_cmd $round $param
+			sta::mapping_round_cmd $round $param $param2
+			set prev_round $round
 		}
 	}
 

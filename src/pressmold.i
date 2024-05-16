@@ -18,6 +18,6 @@ extern void portlist_cmd();
 extern void write_aig_verilog(const char *filename, const char *module_name);
 extern void report_mapping();
 extern void extract_mapping();
-extern void mapping_round_cmd(const char *kind, float param);
+extern void mapping_round_cmd(const char *kind, float param, bool param2);
 extern void report_aig();
 extern void lose_choices();

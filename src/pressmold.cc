@@ -166,6 +166,7 @@ struct AndNode {
 				};
 				float flow_fouts;
 				float area;
+				float fuzzy_fouts;
 
 				// an invariant: if matches_valid on Network is true
 				// and this node's map_fouts is non-zero, then sel/sel_target
@@ -1526,6 +1527,216 @@ struct Network {
 		}
 	}
 
+	void fuzzy_round(bool first, float temp)
+	{
+		ensure_matches();
+		fanouts(true, true);
+
+		for (auto node : nodes)
+		for (int C = 0; C < 2; C++) {
+			if (first)
+				node->pol[C].flow_fouts = std::max(node->pol[C].map_fouts, 1);
+			else
+				node->pol[C].flow_fouts = std::max(node->pol[C].fuzzy_fouts, 1.0f);
+			node->pol[C].fuzzy_fouts = 0;
+		}
+
+		for (auto node : nodes) {
+			if (node->po)
+				continue;
+
+			if (node->pi) {
+				node->pol[0].farea = 0;
+				node->pol[1].farea = target_index.inv_cell->area() / node->pol[1].flow_fouts;
+				continue;
+			}
+
+			for (int C = 0; C < 2; C++) {
+				auto &pol = node->pol[C];
+
+				float best_area = std::numeric_limits<float>::max();
+				int best_index = -1;
+				Target *best_target = nullptr;
+				float Z = 0.0;
+				pol.area = 0;
+
+				for (int i = 0; true; i++) {
+					auto &match = node->matches[i];
+					if (!match.cut[0])
+						break;
+
+					for (auto &target : target_index.classes.at(std::make_pair(match.semiclass, CutList{match.cut}.size))) {
+						// make sure this is a valid match
+						if ((target.map * match.npn).oc != C)
+							continue;
+
+						NPN local_map = target.map * match.npn;
+						float area = target.cell->area();
+						int n = 0;
+						for (auto cut_node : CutList{match.cut}) {
+							bool cut_nodeC = local_map.ic[n++];
+							auto &cut_pol = cut_node->pol[cut_nodeC];
+							area += cut_pol.farea;
+						}
+						area = std::min(area, 1e32f);
+
+						if (area < best_area) {
+							if (best_index != -1)
+								Z *= std::exp((area - best_area) / temp);
+							best_area = area;
+							best_index = i;
+							best_target = &target;
+						}
+
+						Z += std::exp((best_area - area) / temp);
+					}
+				}
+
+				for (int i = 0; true; i++) {
+					auto &match = node->matches[i];
+					if (!match.cut[0])
+						break;
+
+					for (auto &target : target_index.classes.at(std::make_pair(match.semiclass, CutList{match.cut}.size))) {
+						// make sure this is a valid match
+						if ((target.map * match.npn).oc != C)
+							continue;
+
+						NPN local_map = target.map * match.npn;
+						float area = target.cell->area();
+						int n = 0;
+						for (auto cut_node : CutList{match.cut}) {
+							bool cut_nodeC = local_map.ic[n++];
+							auto &cut_pol = cut_node->pol[cut_nodeC];
+							area += cut_pol.farea;
+						}
+						area = std::min(area, 1e32f);
+
+						pol.area += area * (std::exp((best_area - area) / temp) / Z);
+					}
+				}
+
+				assert(best_index != -1);
+				if (pol.map_fouts && (pol.sel != best_index || pol.sel_target != best_target)) {
+					deref_cut(node, C);
+					pol.sel = best_index;
+					pol.sel_target = best_target;
+					ref_cut(node, C);
+				} else {
+					pol.sel = best_index;
+					pol.sel_target = best_target;
+				}
+
+				pol.farea = pol.area / node->pol[C].flow_fouts;
+			}
+		}
+
+		for (auto it = nodes.rbegin(); it != nodes.rend(); ++it) {
+			AndNode *node = *it;
+
+			if (node->po) {
+				int C = 0;
+				for (int i = 0; true; i++) {
+					auto &match = node->matches[i];
+					if (!match.cut[0])
+						break;
+
+					for (auto &target : target_index.classes.at(std::make_pair(match.semiclass, CutList{match.cut}.size))) {
+						// make sure this is a valid match
+						if ((target.map * match.npn).oc != C)
+							continue;
+
+						NPN local_map = target.map * match.npn;
+						float area = target.cell->area();
+						int n = 0;
+						for (auto cut_node : CutList{match.cut}) {
+							bool cut_nodeC = local_map.ic[n++];
+							auto &cut_pol = cut_node->pol[cut_nodeC];
+							cut_pol.fuzzy_fouts += 1.0f;
+						}
+					}
+				}
+				continue;
+			}
+
+			if (node->pi)
+				continue;
+
+			for (int C = 0; C < 2; C++) {
+				auto &pol = node->pol[C];
+
+				float best_area = std::numeric_limits<float>::max();
+				int best_index = -1;
+				Target *best_target = nullptr;
+				float Z = 0.0;
+
+				for (int i = 0; true; i++) {
+					auto &match = node->matches[i];
+					if (!match.cut[0])
+						break;
+
+					for (auto &target : target_index.classes.at(std::make_pair(match.semiclass, CutList{match.cut}.size))) {
+						// make sure this is a valid match
+						if ((target.map * match.npn).oc != C)
+							continue;
+
+						NPN local_map = target.map * match.npn;
+						float area = target.cell->area();
+						int n = 0;
+						for (auto cut_node : CutList{match.cut}) {
+							bool cut_nodeC = local_map.ic[n++];
+							auto &cut_pol = cut_node->pol[cut_nodeC];
+							area += cut_pol.farea;
+						}
+						area = std::min(area, 1e32f);
+
+						if (area < best_area) {
+							if (best_index != -1)
+								Z *= std::exp((area - best_area) / temp);
+							best_area = area;
+							best_index = i;
+							best_target = &target;
+						}
+
+						Z += std::exp((best_area - area) / temp);
+					}
+				}
+
+				for (int i = 0; true; i++) {
+					auto &match = node->matches[i];
+					if (!match.cut[0])
+						break;
+
+					for (auto &target : target_index.classes.at(std::make_pair(match.semiclass, CutList{match.cut}.size))) {
+						// make sure this is a valid match
+						if ((target.map * match.npn).oc != C)
+							continue;
+
+						NPN local_map = target.map * match.npn;
+						float area = target.cell->area();
+						int n = 0;
+						for (auto cut_node : CutList{match.cut}) {
+							bool cut_nodeC = local_map.ic[n++];
+							auto &cut_pol = cut_node->pol[cut_nodeC];
+							area += cut_pol.farea;
+						}
+						area = std::min(area, 1e32f);
+
+						float p = std::max(0.05f, std::min(pol.fuzzy_fouts, 0.95f)) * std::exp((best_area - area) / temp) / Z;
+						assert(p >= 0.0f && p <= 1.0f);
+
+						n = 0;
+						for (auto cut_node : CutList{match.cut}) {
+							bool cut_nodeC = local_map.ic[n++];
+							auto &cut_pol = cut_node->pol[cut_nodeC];
+							cut_pol.fuzzy_fouts += p;
+						}
+					}
+				}
+			}
+		}
+	}
+
 	void save()
 	{
 		ensure_matches();
@@ -1702,7 +1913,7 @@ void prepare_cuts_cmd(int npriority_cuts, int nmatches_max)
 	net.prepare_cuts<EmptyEval>(npriority_cuts, nmatches_max);
 }
 
-void mapping_round_cmd(const char *kind, float param)
+void mapping_round_cmd(const char *kind, float param, bool param2)
 {
 	if (!strcmp(kind, "exact")) {
 		net.exact_round();
@@ -1714,6 +1925,8 @@ void mapping_round_cmd(const char *kind, float param)
 		net.area_flow_round(param);
 	} else if (!strcmp(kind, "anneal")) {
 		net.annealing_round(param);
+	} else if (!strcmp(kind, "fuzzy")) {
+		net.fuzzy_round(param2, param);
 	} else if (!strcmp(kind, "save")) {
 		net.save();
 	} else if (!strcmp(kind, "stitch")) {
@@ -1739,6 +1952,8 @@ void mapping_round_cmd(const char *kind, float param)
 		printf("  (blend=%1.3f)", param);
 	} else if (!strcmp(kind, "anneal")) {
 		printf("  (T=%1.3f)", param);
+	} else if (!strcmp(kind, "fuzzy")) {
+		printf("  (T=%1.3f)%s", (float) param, param2 ? " init" : "");
 	}
 	printf("\n");
 }
