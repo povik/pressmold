@@ -173,3 +173,7 @@ proc map {} {
 	refine_mapping -seq A5E3
 	extract_mapping
 }
+
+proc report_sibling_usage {} {
+	sta::report_sibling_usage
+}

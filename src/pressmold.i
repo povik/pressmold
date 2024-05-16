@@ -21,3 +21,4 @@ extern void extract_mapping();
 extern void mapping_round_cmd(const char *kind, float param, bool param2);
 extern void report_aig();
 extern void lose_choices();
+extern void report_sibling_usage();
