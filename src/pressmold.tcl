@@ -93,9 +93,7 @@ proc refine_mapping {args} {
 		set rep [string range $seq $mark $i]
 		if {![string length $rep]} {set rep 1}
 
-		if {$crumb == "I"} {
-			set round init
-		} elseif {$crumb == "A"} {
+		if {$crumb == "A"} {
 			set round flow
 		} elseif {$crumb == "E"} {
 			set round exact

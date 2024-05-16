@@ -150,7 +150,6 @@ struct AndNode {
 		truth6 semiclass;
 		NPN npn;
 		AndNode *cut[CUT_MAXIMUM];
-		int content;
 	};
 
 	// Scratch area for algorithms
@@ -832,6 +831,31 @@ struct Network {
 		match_storage.clear();
 	}
 
+	static bool cut_union(AndNode *target[], int &cutlen, int max_cut, CutList in1, CutList in2)
+	{
+		CutList::iterator it2 = in2.begin();
+
+		for (auto n1 : in1) {
+			for (; it2 != in2.end() && *it2 < n1; ++it2) {
+				if (cutlen == max_cut)
+					return false;
+				target[cutlen++] = *it2;
+			}
+			if (it2 != in2.end() && *it2 == n1)
+				++it2;
+			if (cutlen == max_cut)
+				return false;
+			target[cutlen++] = n1;
+		}
+
+		for (; it2 != in2.end(); ++it2) {
+			if (cutlen == max_cut)
+				return false;
+			target[cutlen++] = *it2;
+		}
+		return true;
+	}
+
 	template<typename CutEvaluation>
 	void prepare_cuts(int npriority_cuts, int nmatches_max, int max_cut=CUT_MAXIMUM)
 	{
@@ -847,7 +871,6 @@ struct Network {
 		struct PriorityCut {
 			AndNode *cut[CUT_MAXIMUM];
 			truth6 function;
-			int content;
 		};
 		struct NodeCache {
 			int ps_len;
@@ -956,41 +979,29 @@ struct Network {
 				truth6 n2_function = ((j == -1) ? 2 : cache[n2->fid].ps[j].function);
 				if (n2_negated) n2_function ^= mask6(n2_cut.size);
 
-				// TODO: get rid of `cook`
-				std::vector<AndNode *> cook;
-				std::set_union(
-					n1_cut.begin(), n1_cut.end(),
-					n2_cut.begin(), n2_cut.end(),
-					std::back_inserter(cook),
-					[=](const AndNode *n1, const AndNode *n2) { return n1 < n2; }
-				);
-				if ((int) cook.size() > max_cut) continue;
+				AndNode *working_cut[CUT_MAXIMUM];
+				int cutlen = 0;
+				if (!cut_union(working_cut, cutlen, max_cut, n1_cut, n2_cut))
+					continue;
 
-				// "content" heuristics
-				int content = (i == -1 ? 1 : cache[n1->fid].ps[i].content) +
-							  (j == -1 ? 1 : cache[n2->fid].ps[j].content) + 1;
-				content -= n1_cut.size + n2_cut.size - cook.size();
-
-				truth6 cut_function = recode6(n1_function, n1_cut, cook) &
-										recode6(n2_function, n2_cut, cook);
+				truth6 cut_function = recode6(n1_function, n1_cut, working_cut) &
+										recode6(n2_function, n2_cut, working_cut);
 				{
 					uint32_t removal_mask;
-					cut_function = reduce6(cut_function, cook.size(), removal_mask);
-					for (int m = cook.size() - 1; m >= 0; m--) {
-						if (removal_mask & 1 << m)
-							cook.erase(cook.begin() + m);
+					cut_function = reduce6(cut_function, cutlen, removal_mask);
+					int cutlen2 = 0;
+					for (int m = 0; m < cutlen; m++) {
+						if (!(removal_mask & 1 << m))
+							working_cut[cutlen2++] = working_cut[m];
 					}
+					cutlen = cutlen2;
+					if (cutlen < CUT_MAXIMUM)
+						working_cut[cutlen] = NULL;
 				}
 
-				AndNode *working_cut[CUT_MAXIMUM];	
-				int cutlen = 0;
 				int hash = 0;
-				for (auto node : cook) {
-					working_cut[cutlen++] = node;
+				for (auto node : CutList{working_cut})
 					hash = ((hash << 5) + hash) ^ (uintptr_t) node;
-				}
-				if (cutlen < CUT_MAXIMUM)
-					working_cut[cutlen] = NULL;
 
 				auto working_eval = std::make_pair(CutEvaluation(CutList(working_cut), node), hash);
 
@@ -1018,17 +1029,15 @@ struct Network {
 
 				std::copy(working_cut, working_cut + CUT_MAXIMUM, lcache->ps[slot].cut);
 				lcache->ps[slot].function = cut_function;
-				lcache->ps[slot].content = content;
 
 				NPN npn;
 				truth6 semiclass = npn_semiclass(cut_function, cutlen, npn);
 				if (target_index.classes.count(std::make_pair(semiclass, cutlen)) && nmatches < nmatches_max) {
-					node->matches[nmatches].semiclass = semiclass;
-					node->matches[nmatches].npn = npn;
+					auto &match = node->matches[nmatches++];
+					match.semiclass = semiclass;
+					match.npn = npn;
 					std::copy(working_cut, working_cut + CUT_MAXIMUM,
-							  node->matches[nmatches].cut);
-					node->matches[nmatches].content = content;
-					nmatches++;
+							  match.cut);
 				}
 			}
 			if (n1->sibling) {
@@ -1287,58 +1296,6 @@ struct Network {
 
 				if (pol.map_fouts)
 					ref_cut(node, C);
-			}
-		}
-	}
-
-	void init_round()
-	{
-		ensure_matches();
-		fanouts(true);
-
-		for (auto node : nodes) {
-			if (node->po || node->pi)
-				continue;
-
-			for (int C = 0; C < 2; C++) {
-				auto &pol = node->pol[C];
-
-				int best_content = 0;
-				float best_area = std::numeric_limits<float>::max();
-				int best_index = -1;
-				Target *best_target = nullptr;
-
-				for (int i = 0;; i++) {
-					auto &match = node->matches[i];
-					if (!match.cut[0])
-						break;
-
-					for (auto &target : target_index.classes.at(std::make_pair(match.semiclass, CutList{match.cut}.size))) {
-						// make sure this is a valid match
-						if ((target.map * match.npn).oc != C)
-							continue;
-
-						float area = target.cell->area();
-						if (match.content > best_content || (match.content == best_content && area < best_area)) {
-							best_content = match.content;
-							best_area = area;
-							best_index = i;
-							best_target = &target;
-						}
-					}
-				}
-
-				assert(best_index != -1);
-
-				if (pol.map_fouts) {
-					deref_cut(node, C);
-					pol.sel = best_index;
-					pol.sel_target = best_target;
-					ref_cut(node, C);
-				} else {
-					pol.sel = best_index;
-					pol.sel_target = best_target;
-				}
 			}
 		}
 	}
@@ -1755,8 +1712,6 @@ void mapping_round_cmd(const char *kind, float param)
 		net.depth2_round(param != 0);
 	} else if (!strcmp(kind, "flow")) {
 		net.area_flow_round(param);
-	} else if (!strcmp(kind, "init")) {
-		net.init_round();
 	} else if (!strcmp(kind, "anneal")) {
 		net.annealing_round(param);
 	} else if (!strcmp(kind, "save")) {
