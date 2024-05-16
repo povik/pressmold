@@ -353,8 +353,10 @@ struct Network {
 	//
 	struct NodeList {
 		std::vector<AndNode> &storage;
+		bool indication = false;
 
 		class iterator {
+			const NodeList &ms;
 			AndNode *node;
 		public:
 			typedef std::input_iterator_tag iterator_category;
@@ -363,20 +365,32 @@ struct Network {
 			typedef AndNode** pointer;
 			typedef AndNode*& reference;
 
-			iterator(AndNode *node)
-				: node(node) {}
-			iterator& operator++() { node++; return *this; }
+			iterator(const NodeList &ms, AndNode *node)
+				: ms(ms), node(node) {}
+			iterator& operator++() { node++; update(); return *this; }
 			bool operator==(const iterator &other) const
 				{ return node == other.node; }
 			bool operator!=(const iterator &other) const
 				{ return !(*this == other); }
 			AndNode* operator*() const
 				{ return node; }
+			void update() {
+				if (ms.indication) {
+					int no = node - &ms.storage.front();
+					if (no == ms.storage.size()) {
+						printf("                  \r");
+						fflush(stdout);
+					} else if (!(no % 100)) {
+						printf(" %6d/%6d\r", no, (int) ms.storage.size());
+						fflush(stdout);
+					}
+				}
+			}
 		};
 		iterator begin() const
-			{ return iterator(&storage.front()); };
+			{ return iterator(*this, &storage.front()); };
 		iterator end()   const
-			{ return iterator(&storage.front() + storage.size()); };
+			{ return iterator(*this, &storage.front() + storage.size()); };
 		class riterator {
 			AndNode *node;
 		public:
@@ -404,6 +418,8 @@ struct Network {
 			{ return &storage[index]; }
 		int size() const
 			{ return storage.size(); }
+		NodeList w_indication()
+			{ return NodeList{storage, true}; }
 	} nodes;
 
 	Network() : nodes(node_storage) {}
@@ -891,7 +907,7 @@ struct Network {
 		uint64_t nmatches_sum_geom = 0;
 
 		// Go over the nodes in topological order
-		for (auto node : nodes) {
+		for (auto node : nodes.w_indication()) {
 			if (matches_remaining < (nmatches_max + 1)) {
 				matches_remaining = nmatches_max * 128;
 				matches_allocated += matches_remaining * sizeof(AndNode::Match);
