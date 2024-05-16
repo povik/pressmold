@@ -142,6 +142,7 @@ struct AndNode {
 	NodeInput ins[2];
 	AndNode *sibling = NULL;
 	bool polarity = false;
+	bool in_repr = false;
 
 	std::string label;
 	AndNode() {};
@@ -629,14 +630,27 @@ struct Network {
 		return ret;
 	}
 
-	void fanouts(bool discount_mux=false)
+	void fanouts(bool discount_mux=false, bool repr_usage=true)
 	{
-		for (auto node : nodes)
+		for (auto node : nodes) {
+			node->in_repr = false;
 			node->fanouts = 0;
+		}
+
+		if (repr_usage)
+		for (auto it = nodes.rbegin(); it != nodes.rend(); ++it) {
+			if ((*it)->in_repr || (*it)->po)
+			for (auto fanin : (*it)->fanins())
+				fanin->in_repr = true;
+		}
 
 		for (auto node : nodes) {
 			if (node->po)
 				node->fanouts++;
+
+			if (repr_usage && !node->in_repr)
+				continue;
+
 			for (auto fanin : node->fanins())
 				fanin->fanouts++;
 
@@ -1472,7 +1486,7 @@ struct Network {
 	void area_flow_round(float refs_blend)
 	{
 		ensure_matches();
-		fanouts(true);
+		fanouts(true, true);
 
 		for (auto node : nodes)
 		for (int C = 0; C < 2; C++) {
