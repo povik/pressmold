@@ -932,7 +932,6 @@ struct Network {
 		return true;
 	}
 
-	template<typename CutEvaluation>
 	void prepare_cuts(int npriority_cuts, int nmatches_max, int max_cut=CUT_MAXIMUM)
 	{
 		if (max_cut < 3 || max_cut > CUT_MAXIMUM)
@@ -1044,12 +1043,9 @@ struct Network {
 			AndNode *n1 = node->ins[0].node, *n1_save = n1;
 			AndNode *n2 = node->ins[1].node;
 
-			// Find the best npriority_cuts cuts according
-			// to CutEvaluation
-			std::map<std::pair<CutEvaluation, int>, int> leaderboard;
+			std::set<int> seen_cuts;
 
-			// Separately, find up to nmatches_max of matches
-			// to technology cells
+			// Find up to nmatches_max of matches to technology cells
 			int nmatches = 0;
 
 			bool n1_negated = node->ins[0].negated;
@@ -1099,30 +1095,31 @@ struct Network {
 				int hash = 0;
 				for (auto node : CutList{working_cut})
 					hash = ((hash << 5) + hash) ^ (uintptr_t) node;
-
-				auto working_eval = std::make_pair(CutEvaluation(CutList(working_cut), node), hash);
-
-				if (leaderboard.count(working_eval))
+				if (seen_cuts.count(hash))
 					continue;
+				seen_cuts.insert(hash);
 
-				int slot;
-				if (lcache->ps_len < npriority_cuts) {
-					// Slot is assured
-					leaderboard[working_eval] = slot = lcache->ps_len++;
-				} else {
-					// Post the new cut on the leaderboard, and if that sinks one
-					// of the earlier cached cuts below the cutoff, reuse the slot
-					// in the `lcache->ps` array for the new cut
-					leaderboard[working_eval] = -1;
-					slot = (leaderboard.rbegin())->second;
-					leaderboard.erase(std::prev(leaderboard.end()));
-
-					if (slot != -1)
-						leaderboard[working_eval] = slot;
+				NPN npn;
+				truth6 semiclass = npn_semiclass(cut_function, cutlen, npn);
+				if (target_index.classes.count(std::make_pair(semiclass, cutlen)) && nmatches < nmatches_max) {
+					auto &match = node->matches[nmatches++];
+					match.semiclass = semiclass;
+					match.npn = npn;
+					std::copy(working_cut, working_cut + CUT_MAXIMUM,
+							  match.cut);
+#ifdef SIBLING_RECORDING
+					{
+						auto &ps = lcache->ps[slot];
+						std::copy(ps.used_siblings,
+								  ps.used_siblings + ps.nused_siblings,
+								  std::back_inserter(match.used_siblings));
+					}
+#endif
 				}
- 
-				if (slot == -1)
+
+				if (lcache->ps_len == npriority_cuts)
 					continue;
+				int slot = lcache->ps_len++;
 
 				std::copy(working_cut, working_cut + CUT_MAXIMUM, lcache->ps[slot].cut);
 				lcache->ps[slot].function = cut_function;
@@ -1146,24 +1143,6 @@ struct Network {
 					}
 				}
 #endif
-
-				NPN npn;
-				truth6 semiclass = npn_semiclass(cut_function, cutlen, npn);
-				if (target_index.classes.count(std::make_pair(semiclass, cutlen)) && nmatches < nmatches_max) {
-					auto &match = node->matches[nmatches++];
-					match.semiclass = semiclass;
-					match.npn = npn;
-					std::copy(working_cut, working_cut + CUT_MAXIMUM,
-							  match.cut);
-#ifdef SIBLING_RECORDING
-					{
-						auto &ps = lcache->ps[slot];
-						std::copy(ps.used_siblings,
-								  ps.used_siblings + ps.nused_siblings,
-								  std::back_inserter(match.used_siblings));
-					}
-#endif
-				}
 			}
 			if (n1->sibling) {
 				n1_negated ^= n1->polarity ^ n1->sibling->polarity;
@@ -1182,11 +1161,6 @@ struct Network {
 			} 
 
 			node->matches[nmatches].cut[0] = NULL;
-
-			assert(!leaderboard.empty());
-			assert(!leaderboard.begin()->first.first.reject(node));
-			leaderboard.begin()->first.first.select_on(node);
-
 			matches_remaining -= nmatches + 1;
 			matches_page += nmatches + 1;
 
@@ -2019,25 +1993,9 @@ extern const char *pressmold_swig_tcl_inits[];
 
 Network net;
 
-struct EmptyEval {
-	int cut_width;
-
-	EmptyEval(CutList cutlist, AndNode *node)
-	{
-		(void) node;
-		cut_width = cutlist.size;
-	}
-	bool operator<(const EmptyEval other) const
-			{ return cut_width < other.cut_width; }
-	bool reject(AndNode *node) const 
-			{ (void) node; return false; }
-	void select_on(AndNode *node) const
-			{ (void) node; return; }
-};
-
 void prepare_cuts_cmd(int npriority_cuts, int nmatches_max)
 {
-	net.prepare_cuts<EmptyEval>(npriority_cuts, nmatches_max);
+	net.prepare_cuts(npriority_cuts, nmatches_max);
 }
 
 void mapping_round_cmd(const char *kind, float param, bool param2)
