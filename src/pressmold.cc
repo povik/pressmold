@@ -19,7 +19,7 @@
 #include <sta/Corner.hh>
 
 #include <tcl.h>
-//#include <tclreadline.h>
+#include <tclreadline.h>
 
 #include <algorithm>
 #include <iostream>
@@ -2003,10 +2003,16 @@ void lose_choices()
 
 static int tcl_main(Tcl_Interp *interp)
 {
-	assert (Tcl_Init(interp) == TCL_OK);
-	//assert(Tclreadline_Init(interp) != TCL_ERROR);
-	//Tcl_StaticPackage(interp, "tclreadline", Tclreadline_Init, Tclreadline_SafeInit);
-	//assert(Tcl_EvalFile(interp, TCLRL_LIBRARY "/tclreadlineInit.tcl") == TCL_OK);
+	int ret;
+
+#define CHECK(f) \
+	if ((ret = (f)) != TCL_OK) \
+		return ret;
+
+	CHECK(Tcl_Init(interp))
+	CHECK(Tclreadline_Init(interp))
+	Tcl_StaticPackage(interp, "tclreadline", Tclreadline_Init, Tclreadline_SafeInit);
+	CHECK(Tcl_EvalFile(interp, TCLRL_LIBRARY "/tclreadlineInit.tcl"))
 
 	sta::initSta();
 	sta::Sta *sta = new sta::Sta;
@@ -2015,29 +2021,28 @@ static int tcl_main(Tcl_Interp *interp)
 	sta->setTclInterp(interp);
 	Pressmold_swig_Init(interp);
 	sta::evalTclInit(interp, sta::tcl_inits);
-	Tcl_Eval(interp, "init_sta_cmds");
-	sta::evalTclInit(interp, sta::pressmold_swig_tcl_inits);
 
+	CHECK(Tcl_Eval(interp, "namespace import sta::*"))
+	// `history` can fail. OpenROAD codebase says this is due to
+	// some distributions deploying a broken script. In any case
+	// purposefully don't check the error code here.
+	Tcl_Eval(interp, "history");
+	CHECK(Tcl_Eval(interp, "history event"))
+	CHECK(Tcl_Eval(interp, "::tclreadline::readline builtincompleter true"))
+	CHECK(Tcl_Eval(interp, "::tclreadline::readline customcompleter ::tclreadline::ScriptCompleter"))
+
+	sta::evalTclInit(interp, sta::pressmold_swig_tcl_inits);
 	printf(" Welcome to the Press Mold Mapper.\n Copyright 2024 Martin Povišer\n Happy pressing!\n\n");
 
-#if 0
-	if (argc != 1) {
-		for (int i = 1; i < argc; i++) {
-			printf("+ %s\n", argv[i]);
-			if (Tcl_Eval(interp, argv[i]) != TCL_OK) {
-				printf("%s\n", Tcl_GetStringResult(interp));
-				return 1;
-			}
-		}
-	} else {
-		//Tcl_Eval(interp, "::tclreadline::Loop");
-#endif
-		return TCL_OK;
-//	}
+	if (!Tcl_GetStartupScript(NULL))
+		return Tcl_Eval(interp, "::tclreadline::Loop");
+
+	return TCL_OK;
+#undef CHECK
 }
 
 int main(int argc, char *argv[])
 {
-	Tcl_Main(1, argv, tcl_main);
+	Tcl_Main(argc, argv, tcl_main);
 	return 0;
 }

@@ -35,6 +35,8 @@ swig_lib(NAME pressmold_swig
 target_include_directories(pressmold_swig
 	PUBLIC ${OPENSTA_HOME} ${OPENSTA_HOME}/include/sta/ .)
 
+find_library(TCL_READLINE_LIBRARY tclreadline REQUIRED)
+
 add_executable(pressmold
 	pressmold.cc
 	npn.cc)
@@ -43,4 +45,4 @@ target_include_directories(pressmold
 	PUBLIC .)
 
 target_link_libraries(pressmold
-	PRIVATE pressmold_swig OpenSTA)
+	PRIVATE pressmold_swig OpenSTA tclreadline)
