@@ -155,9 +155,6 @@ struct AndNode {
 		truth6 semiclass;
 		NPN npn;
 		AndNode *cut[CUT_MAXIMUM];
-#ifdef SIBLING_RECORDING
-		std::vector<AndNode *> used_siblings;
-#endif
 	};
 
 	// Scratch area for algorithms
@@ -946,26 +943,6 @@ struct Network {
 		struct PriorityCut {
 			AndNode *cut[CUT_MAXIMUM];
 			truth6 function;
-#ifdef SIBLING_RECORDING
-			int nused_siblings = 0;
-			AndNode *used_siblings[16];
-
-			void insert_sibling(AndNode *sibl)
-			{
-				int i;
-				for (i = 0; i < nused_siblings; i++)
-					if (used_siblings[i] >= sibl)
-						break;
-
-				if (i < nused_siblings && used_siblings[i] == sibl)
-					return;
-
-				nused_siblings++;
-				assert(nused_siblings <= std::size(used_siblings));
-				for (; i < nused_siblings; i++)
-					std::swap(sibl, used_siblings[i]);
-			}
-#endif
 		};
 		struct NodeCache {
 			int ps_len;
@@ -1105,26 +1082,6 @@ struct Network {
 
 				std::copy(working_cut, working_cut + CUT_MAXIMUM, lcache->ps[slot].cut);
 				lcache->ps[slot].function = cut_function;
-#ifdef SIBLING_RECORDING
-				{
-					auto &ps = lcache->ps[slot];
-					ps.nused_siblings = 0;
-					if (n1_choicing)
-						ps.insert_sibling(n1);
-					if (n2_choicing)
-						ps.insert_sibling(n2);
-					if (i >= 0) {
-						auto &ps1 = cache[n1->fid].ps[i];
-						for (int k = 0; k < ps1.nused_siblings; k++)
-							ps.insert_sibling(ps1.used_siblings[k]);
-					}
-					if (j >= 0) {
-						auto &ps2 = cache[n2->fid].ps[i];
-						for (int k = 0; k < ps2.nused_siblings; k++)
-							ps.insert_sibling(ps2.used_siblings[k]);
-					}
-				}
-#endif
 
 				NPN npn;
 				truth6 semiclass = npn_semiclass(cut_function, cutlen, npn);
@@ -1134,14 +1091,6 @@ struct Network {
 					match.npn = npn;
 					std::copy(working_cut, working_cut + CUT_MAXIMUM,
 							  match.cut);
-#ifdef SIBLING_RECORDING
-					{
-						auto &ps = lcache->ps[slot];
-						std::copy(ps.used_siblings,
-								  ps.used_siblings + ps.nused_siblings,
-								  std::back_inserter(match.used_siblings));
-					}
-#endif
 				}
 			}
 			if (n1->sibling) {
@@ -2070,81 +2019,7 @@ void report_mapping()
 }
 
 void report_sibling_usage()
-{	
-#ifdef SIBLING_RECORDING
-	printf("\n");
-
-	net.fanouts(false, true);
-
-	for (auto node : net.nodes)
-		node->visited = false;
-
-	for (auto node : net.nodes)
-	for (int C = 0; C < 2; C++)
-	if (!node->pi && node->pol[C].map_fouts) {
-		assert(node->pol[C].sel != -1);
-		for (auto sibling : node->matches[node->pol[C].sel].used_siblings) {
-			assert(!sibling->in_repr);
-			sibling->visited = true;
-		}
-	}
-
-	for (auto node : net.nodes)
-	if (node->in_repr) {
-		for (AndNode *sibl = node->sibling; sibl; sibl = sibl->sibling)
-		if (sibl->visited) {
-			std::set<AndNode *> support;
-			std::set<AndNode *> seen = {sibl};
-			std::vector<AndNode *> queue = {sibl};
-
-			while (!queue.empty()) {
-				AndNode *n = queue.back(); queue.pop_back();
-				for (auto fanin : n->fanins()) {
-					if (fanin->in_repr) {
-						support.insert(fanin);
-					} else if (!seen.count(fanin)) {
-						seen.insert(fanin);
-						queue.push_back(fanin);
-					}
-				}
-			}
-
-			std::vector<AndNode *> supp;
-			std::copy(support.begin(), support.end(),
-					  std::back_inserter(supp));
-
-			auto t1 = node->truth_table(supp);
-			auto t2 = sibl->truth_table(supp);
-			if (sibl->polarity ^ node->polarity) {
-				for (int i = 0; i < t2.size(); i++)
-					t2[i] = !t2[i];
-			}
-
-			assert(!t2.empty());
-			if (t1.empty()) {
-				printf("support %d: spilled\n", (int) support.size());
-			} else {
-				int d = 0;
-				for (int i = 0; i < t1.size(); i++) {
-					if (t1[i] != t2[i])
-						d++;
-				}
-				printf("support %d: diff %d\n\t", (int) support.size(), d);
-				for (int i = 0; i < t1.size(); i++)
-					printf("%s", t1[i] != t2[i] ? "x" : "-");
-				printf("\n");
-			}
-
-			uint64_t w = 0;
-			if (support.size() <= 6) {
-				for (int i = 0; i < t2.size(); i++)
-					if (t2[i]) w |= ((uint64_t) 1) << i;
-				NPN npn;
-				printf("\tsemiclass %llx (%llx)\n", npn_semiclass(w, (int) support.size(), npn), w);
-			}
-		}
-	}
-#endif
+{
 }
 
 void extract_mapping()
