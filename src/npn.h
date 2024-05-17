@@ -74,6 +74,11 @@ struct NPN {
 		}
 		return ret;
 	}
+
+	int c_fingerprint()
+	{
+		return oc | ic[0] << 1 | ic[1] << 2 | ic[2] << 3 | ic[3] << 4 | ic[4] << 5 | ic[5] << 6;
+	}
 };
 
 truth6 npn_semiclass(truth6 m, int ninputs, NPN &npn);

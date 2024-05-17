@@ -185,3 +185,7 @@ proc map {} {
 proc report_sibling_usage {} {
 	sta::report_sibling_usage
 }
+
+proc prune_targets {} {
+	sta::prune_targets_cmd
+}

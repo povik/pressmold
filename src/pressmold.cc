@@ -2298,6 +2298,30 @@ bool register_cell_cmd(sta::LibertyCell *cell, bool verbose)
 	return true;
 }
 
+void prune_targets_cmd()
+{
+	net.matches_valid = false;
+
+	int tally_old = 0, tally_new = 0;
+
+	for (auto &[key, target_list] : target_index.classes) {
+		std::sort(target_list.begin(), target_list.end(),
+			[](Target &a, Target &b) {
+				return std::make_pair(a.map.c_fingerprint(), a.cell->area())
+							< std::make_pair(b.map.c_fingerprint(), b.cell->area());
+		});
+		tally_old += target_list.size();
+		auto it = std::unique(target_list.begin(), target_list.end(),
+			[](Target &a, Target &b) {
+				return a.map.c_fingerprint() == b.map.c_fingerprint();
+		});
+		target_list.erase(it, target_list.end());
+		tally_new += target_list.size();
+	}
+
+	printf("Preserved %d out of %d targets.\n", tally_new, tally_old);
+}
+
 // TODO: error handling
 void read_aiger_cmd(const char *filename, const char *name)
 {

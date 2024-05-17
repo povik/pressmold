@@ -9,3 +9,4 @@ void mapping_round_cmd(const char *kind, float param, bool param2);
 void report_aig();
 void lose_choices();
 void report_sibling_usage();
+void prune_targets_cmd();
