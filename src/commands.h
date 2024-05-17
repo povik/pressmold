@@ -1,5 +1,5 @@
 bool register_cell_cmd(sta::LibertyCell *cell, bool verbose);
-void prepare_cuts_cmd(int npriority_cuts, int nmatches_max);
+void prepare_cuts_cmd(int cuts, int matches, int max_cut);
 void read_aiger_cmd(const char *filename, const char *name);
 void portlist_cmd();
 void write_aig_verilog(const char *filename, const char *module_name);

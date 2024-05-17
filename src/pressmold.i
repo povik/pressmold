@@ -12,7 +12,7 @@
 	#include "commands.h"	
 %}
 extern bool register_cell_cmd(LibertyCell *cell, bool verbose);
-extern void prepare_cuts_cmd(int npriority_cuts, int nmatches_max);
+extern void prepare_cuts_cmd(int cuts, int matches, int max_cut);
 extern void read_aiger_cmd(const char *filename, const char *name);
 extern void portlist_cmd();
 extern void write_aig_verilog(const char *filename, const char *module_name);

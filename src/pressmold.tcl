@@ -50,11 +50,12 @@ proc check_equivalence {path} {
 }
 
 sta::define_cmd_args "prepare_cuts" \
-	{[-cuts cuts_limit] [-matches matches_limit]}
+	{[-cuts cuts_limit] [-matches matches_limit] [-max_cut max_cut]}
 proc prepare_cuts {args} {
 	sta::parse_key_args "prepare_cuts" args \
-		keys {-cuts -matches} \
+		keys {-cuts -matches -max_cut} \
 		flags {}
+
 	if {[info exists keys(-matches)]} {
 		set matches $keys(-matches)
 	} else {
@@ -67,7 +68,14 @@ proc prepare_cuts {args} {
 		set cuts 64
 	}
 
-	sta::prepare_cuts_cmd $cuts $matches
+	if {[info exists keys(-max_cut)]} {
+		set max_cut $keys(-max_cut)
+	} else {
+		# select the build-time limit
+		set max_cut -1
+	}
+
+	sta::prepare_cuts_cmd $cuts $matches $max_cut
 }
 
 sta::define_cmd_args "develop_mapping" \

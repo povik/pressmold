@@ -1993,9 +1993,12 @@ extern const char *pressmold_swig_tcl_inits[];
 
 Network net;
 
-void prepare_cuts_cmd(int npriority_cuts, int nmatches_max)
+void prepare_cuts_cmd(int cuts, int matches, int max_cut)
 {
-	net.prepare_cuts(npriority_cuts, nmatches_max);
+	if (max_cut == -1)
+		max_cut = CUT_MAXIMUM;
+
+	net.prepare_cuts(cuts, matches, max_cut);
 }
 
 void mapping_round_cmd(const char *kind, float param, bool param2)
