@@ -50,39 +50,39 @@ proc check_equivalence {path} {
 }
 
 sta::define_cmd_args "prepare_cuts" \
-	{[-priority npriority_cuts] [-match_limit match_limit]}
+	{[-cuts cuts_limit] [-matches matches_limit]}
 proc prepare_cuts {args} {
-	sta::parse_key_args "refine_mapping" args \
-		keys {-priority -match_limit} \
+	sta::parse_key_args "prepare_cuts" args \
+		keys {-cuts -matches} \
 		flags {}
-	if {[info exists keys(-match_limit)]} {
-		set match_limit $keys(-match_limit)
+	if {[info exists keys(-matches)]} {
+		set matches $keys(-matches)
 	} else {
-		set match_limit 16
+		set matches 16
 	}
 
-	if {[info exists keys(-priority)]} {
-		set priority $keys(-priority)
+	if {[info exists keys(-cuts)]} {
+		set cuts $keys(-cuts)
 	} else {
-		set priority 64
+		set cuts 64
 	}
 
-	sta::prepare_cuts_cmd $priority $match_limit
+	sta::prepare_cuts_cmd $cuts $matches
 }
 
-sta::define_cmd_args "refine_mapping" \
-	{[-seq pass_sequence] [-temp starting_temperature]}
+sta::define_cmd_args "develop_mapping" \
+	{[-sequence pass_sequence] [-temperature starting_temperature]}
 
-proc refine_mapping {args} {
-	sta::parse_key_args "refine_mapping" args \
-		keys {-seq -temp} \
+proc develop_mapping {args} {
+	sta::parse_key_args "develop_mapping" args \
+		keys {-sequence -temperature} \
 		flags {}
 
-	if { ![info exists keys(-seq)] } {
-		error "A -seq argument is required"
+	if { ![info exists keys(-sequence)] } {
+		error "A -sequence argument is required"
 	}
 
-	set seq $keys(-seq)
+	set seq $keys(-sequence)
 	set refs_blend 1.0
 	for {set i 0} {$i < [string length $seq]} {incr i} {
 		set crumb [string index $seq $i]
@@ -99,8 +99,8 @@ proc refine_mapping {args} {
 			set round exact
 		} elseif {$crumb == "T"} {
 			set round anneal
-			if {![info exists keys(-temp)]} {
-				error "Missing -temp argument for annealing"
+			if {![info exists keys(-temperature)]} {
+				error "Missing -temperature argument for annealing"
 			}
 		} elseif {$crumb == "D"} {
 			set round depth
@@ -113,7 +113,7 @@ proc refine_mapping {args} {
 		} elseif {$crumb == "s"} {
 			set round stitch
 		} else {
-			error "Symbol $crumb passed in the -seq argument not recognized"
+			error "Symbol $crumb passed in the -sequence argument not recognized"
 		}
 
 		set prev_round ""
@@ -121,18 +121,18 @@ proc refine_mapping {args} {
 			set param2 false
 			if {$round == "anneal"} {
 				if {$rep == 1} {
-					set param $keys(-temp)
+					set param $keys(-temperature)
 				} else {
-					set param [expr (1.0 - ($j / ($rep - 1.0))) * $keys(-temp)]
+					set param [expr (1.0 - ($j / ($rep - 1.0))) * $keys(-temperature)]
 				}
 			} elseif {$round == "flow"} {
 				set param $refs_blend
 				set refs_blend [expr $refs_blend / 2.0]
 			} elseif {$round == "fuzzy"} {
 				if {$rep == 1} {
-					set param $keys(-temp)
+					set param $keys(-temperature)
 				} else {
-					set param [expr (1.0 - ($j / ($rep - 0.0))) * $keys(-temp)]
+					set param [expr (1.0 - ($j / ($rep - 0.0))) * $keys(-temperature)]
 				}
 				if {$prev_round != "fuzzy"} {
 					set param2 true
@@ -170,7 +170,7 @@ proc report_mapping {} {
 
 proc map {} {
 	prepare_cuts
-	refine_mapping -seq A5E3
+	develop_mapping -sequence A5E3
 	extract_mapping
 }
 

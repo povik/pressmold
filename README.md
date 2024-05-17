@@ -39,7 +39,7 @@ Mapping problem summary:
 To ask for 5 rounds of area flow, 3 rounds of exact area passes:
 
 	prepare_cuts
-	refine_mapping -seq A5E3
+	develop_mapping -seq A5E3
 	report_mapping
 
 outputs
