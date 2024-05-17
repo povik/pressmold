@@ -1099,24 +1099,6 @@ struct Network {
 					continue;
 				seen_cuts.insert(hash);
 
-				NPN npn;
-				truth6 semiclass = npn_semiclass(cut_function, cutlen, npn);
-				if (target_index.classes.count(std::make_pair(semiclass, cutlen)) && nmatches < nmatches_max) {
-					auto &match = node->matches[nmatches++];
-					match.semiclass = semiclass;
-					match.npn = npn;
-					std::copy(working_cut, working_cut + CUT_MAXIMUM,
-							  match.cut);
-#ifdef SIBLING_RECORDING
-					{
-						auto &ps = lcache->ps[slot];
-						std::copy(ps.used_siblings,
-								  ps.used_siblings + ps.nused_siblings,
-								  std::back_inserter(match.used_siblings));
-					}
-#endif
-				}
-
 				if (lcache->ps_len == npriority_cuts)
 					continue;
 				int slot = lcache->ps_len++;
@@ -1143,6 +1125,24 @@ struct Network {
 					}
 				}
 #endif
+
+				NPN npn;
+				truth6 semiclass = npn_semiclass(cut_function, cutlen, npn);
+				if (target_index.classes.count(std::make_pair(semiclass, cutlen)) && nmatches < nmatches_max) {
+					auto &match = node->matches[nmatches++];
+					match.semiclass = semiclass;
+					match.npn = npn;
+					std::copy(working_cut, working_cut + CUT_MAXIMUM,
+							  match.cut);
+#ifdef SIBLING_RECORDING
+					{
+						auto &ps = lcache->ps[slot];
+						std::copy(ps.used_siblings,
+								  ps.used_siblings + ps.nused_siblings,
+								  std::back_inserter(match.used_siblings));
+					}
+#endif
+				}
 			}
 			if (n1->sibling) {
 				n1_negated ^= n1->polarity ^ n1->sibling->polarity;
