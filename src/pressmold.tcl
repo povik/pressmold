@@ -50,11 +50,11 @@ proc check_equivalence {path} {
 }
 
 sta::define_cmd_args "prepare_cuts" \
-	{[-cuts cuts_limit] [-matches matches_limit] [-max_cut max_cut]}
+	{[-cuts cuts_limit] [-matches matches_limit] [-max_cut max_cut] [-sieve]}
 proc prepare_cuts {args} {
 	sta::parse_key_args "prepare_cuts" args \
 		keys {-cuts -matches -max_cut} \
-		flags {}
+		flags {-sieve}
 
 	if {[info exists keys(-matches)]} {
 		set matches $keys(-matches)
@@ -75,7 +75,7 @@ proc prepare_cuts {args} {
 		set max_cut -1
 	}
 
-	sta::prepare_cuts_cmd $cuts $matches $max_cut
+	sta::prepare_cuts_cmd $cuts $matches $max_cut [info exists flags(-sieve)]
 }
 
 sta::define_cmd_args "develop_mapping" \
@@ -188,4 +188,13 @@ proc report_sibling_usage {} {
 
 proc prune_targets {} {
 	sta::prune_targets_cmd
+}
+
+sta::define_cmd_args "sieve" \
+	{[-dump] [-record] [-clear]}
+proc sieve {args} {
+	sta::parse_key_args "sieve" args \
+		keys {} \
+		flags {-dump -record -clear}
+	sta::sieve_cmd [info exists flags(-dump)] [info exists flags(-record)] [info exists flags(-clear)]
 }

@@ -1,5 +1,5 @@
 bool register_cell_cmd(sta::LibertyCell *cell, bool verbose);
-void prepare_cuts_cmd(int cuts, int matches, int max_cut);
+void prepare_cuts_cmd(int cuts, int matches, int max_cut, bool apply_sieve);
 void read_aiger_cmd(const char *filename, const char *name);
 void portlist_cmd();
 void write_aig_verilog(const char *filename, const char *module_name);
@@ -10,3 +10,4 @@ void report_aig();
 void lose_choices();
 void report_sibling_usage();
 void prune_targets_cmd();
+void sieve_cmd(bool dump, bool record, bool clear);

@@ -137,6 +137,8 @@ struct NodeInput {
 	}
 
 	std::vector<bool> truth_table(std::vector<AndNode *> &cut);
+
+	truth6 weval();
 };
 
 struct AndNode {
@@ -192,6 +194,9 @@ struct AndNode {
 	sta::Net *net;
 	int fanouts;
 	int fid; // frontier index
+
+	truth6 weval;
+	void propagate_weval()	{ weval = ins[0].weval() & ins[1].weval(); }
 
 	void apply_replacements()
 	{
@@ -272,6 +277,16 @@ struct AndNode {
 		return ret;
 	}
 };
+
+truth6 NodeInput::weval()
+{
+	if (!node) {
+		assert(is_const());
+		return eval() ? ~(truth6) 0 : 0;
+	} else {
+		return negated ? ~node->weval : node->weval;
+	}
+}
 
 std::vector<bool> NodeInput::truth_table(std::vector<AndNode *> &cut)
 {
@@ -380,6 +395,11 @@ uint32_t read_be32(std::istream &f) {
 		((uint32_t) f.get() << 16) | 
 		((uint32_t) f.get() << 8) | (uint32_t) f.get();
 }
+
+bool sieve_recording = 0;
+std::set<truth6> sieve = {
+#include "sieve.inc"
+};
 
 struct Network {
 	std::string name;
@@ -929,7 +949,7 @@ struct Network {
 		return true;
 	}
 
-	void prepare_cuts(int npriority_cuts, int nmatches_max, int max_cut=CUT_MAXIMUM)
+	void prepare_cuts(int npriority_cuts, int nmatches_max, int max_cut, bool apply_sieve)
 	{
 		if (max_cut < 3 || max_cut > CUT_MAXIMUM)
 			throw std::runtime_error("Maximum cut size out of range");
@@ -949,8 +969,8 @@ struct Network {
 			PriorityCut *ps;
 			AndNode *mark;
 		};
-		PriorityCut *pcuts = new PriorityCut[frontier_size * npriority_cuts];
-		NodeCache *cache = new NodeCache[frontier_size];
+		std::unique_ptr<PriorityCut[]> pcuts(new PriorityCut[frontier_size * npriority_cuts]);
+		std::unique_ptr<NodeCache[]> cache(new NodeCache[frontier_size]);
 
 		int matches_remaining = 0;
 		size_t matches_allocated = 0;
@@ -1030,6 +1050,9 @@ struct Network {
 
 			bool n1_choicing = false, n2_choicing = false;
 		choice_switched:
+			if (sieve_recording && (n1_choicing || n2_choicing))
+				throw std::runtime_error("Sieve recording unsupported in presence of choices");
+
 			assert(n1 && n2);
 			assert(cache[n1->fid].mark == n1);
 			assert(cache[n2->fid].mark == n2);
@@ -1076,13 +1099,6 @@ struct Network {
 					continue;
 				seen_cuts.insert(hash);
 
-				if (lcache->ps_len == npriority_cuts)
-					continue;
-				int slot = lcache->ps_len++;
-
-				std::copy(working_cut, working_cut + CUT_MAXIMUM, lcache->ps[slot].cut);
-				lcache->ps[slot].function = cut_function;
-
 				NPN npn;
 				truth6 semiclass = npn_semiclass(cut_function, cutlen, npn);
 				if (target_index.classes.count(std::make_pair(semiclass, cutlen)) && nmatches < nmatches_max) {
@@ -1091,7 +1107,58 @@ struct Network {
 					match.npn = npn;
 					std::copy(working_cut, working_cut + CUT_MAXIMUM,
 							  match.cut);
+
+					if (sieve_recording && cutlen >= 3) {
+						std::set<AndNode *> leaves;
+						for (auto leave : CutList{working_cut})
+							leaves.insert(leave);
+						std::set<AndNode *> seen = {node};
+						std::vector<AndNode *> queue = {node};
+						while (!queue.empty()) {
+							AndNode *n = queue.back(); queue.pop_back();
+							for (auto fanin : n->fanins()) {
+								if (!leaves.count(fanin) && !seen.count(fanin)) {
+									seen.insert(fanin);
+									queue.push_back(fanin);
+								}
+							}
+						}
+
+						static truth6 cofactor_masks[6] = {
+							0xaaaaaaaaaaaaaaaa,
+							0xcccccccccccccccc,
+							0xf0f0f0f0f0f0f0f0,
+							0xff00ff00ff00ff00,
+							0xffff0000ffff0000,
+							0xffffffff00000000
+						};
+
+						int n = 0;
+						for (auto leave : leaves)
+							leave->weval = cofactor_masks[n++];
+
+						n = 0;
+						for (auto node_ : seen) {
+							if (node_ == node)
+								continue;
+							node_->propagate_weval();
+							uint32_t removal_mask;
+							truth6 snap = reduce6(node_->weval, 6, removal_mask);
+							npn_semiclass_allrepr(snap, 6 - std::popcount(removal_mask), [&](truth6 repr, NPN &npn) {
+								sieve.insert(repr);
+							});
+						}
+					}
 				}
+
+				if (apply_sieve && !sieve.count(semiclass))
+					continue;
+
+				if (lcache->ps_len == npriority_cuts)
+					continue;
+				int slot = lcache->ps_len++;
+				std::copy(working_cut, working_cut + CUT_MAXIMUM, lcache->ps[slot].cut);
+				lcache->ps[slot].function = cut_function;
 			}
 			if (n1->sibling) {
 				n1_negated ^= n1->polarity ^ n1->sibling->polarity;
@@ -1122,9 +1189,6 @@ struct Network {
 			nmatches_sum += nmatches;
 			nmatches_sum_geom += (uint64_t) nmatches * nmatches;
 		}
-
-		delete[] pcuts;
-		delete[] cache;
 
 		printf("\nCut matching statistics:\n");
 		printf("  %d nodes", nnodes);
@@ -1942,12 +2006,12 @@ extern const char *pressmold_swig_tcl_inits[];
 
 Network net;
 
-void prepare_cuts_cmd(int cuts, int matches, int max_cut)
+void prepare_cuts_cmd(int cuts, int matches, int max_cut, bool apply_sieve)
 {
 	if (max_cut == -1)
 		max_cut = CUT_MAXIMUM;
 
-	net.prepare_cuts(cuts, matches, max_cut);
+	net.prepare_cuts(cuts, matches, max_cut, apply_sieve);
 }
 
 void mapping_round_cmd(const char *kind, float param, bool param2)
@@ -2234,6 +2298,19 @@ void lose_choices()
 {
 	net.lose_choices();
 	net.consolidate();
+}
+
+void sieve_cmd(bool dump, bool record, bool clear)
+{
+	if (dump) {
+		for (auto f : sieve)
+			printf("0x%016llx,\n", f);	
+	}
+
+	if (clear)
+		sieve.clear();
+
+	sieve_recording = record;
 }
 
 static int tcl_main(Tcl_Interp *interp)
